@@ -28,12 +28,12 @@ OEmailAddress=""
 
 # Print Help Function
 function pHelp {
-    echo -e "Usage: ./dns_notify {-h} [-v] [-e | -E over_ride@email] [-d domain_name]\n"
+    echo -e "Usage: ./dns_notify {-h} [-v] [-n | -e over_ride@email] [-d domain_name]\n"
 
     echo -e "Ex: ./dns_notify"
-    echo -e "    ./dns_notify -v -e"
-    echo -e "    ./dns_notify -E email@ucdavis.edu"
-    echo -e "    ./dns_notify -d 123.45.67.89\n\n"
+    echo -e "    ./dns_notify -v -n"
+    echo -e "    ./dns_notify -e email@ucdavis.edu"
+    echo -e "    ./dns_notify -d subdomain.ucdavis.edu\n\n"
 
     echo -e "About: ./dns_notify is a script that is meant to be run by a cron job with no"
     echo -e "       arguements to monitor the dns for important UC Davis domains. The first"
