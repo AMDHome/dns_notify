@@ -29,7 +29,8 @@ To use this program just clone it into a directory and then open up crontab as r
 
 If you use the cron entry above make sure you change the path to the location where you cloned dns_notify to.
 
-Modify the Bash variable `CURRENT_DIR` (on line 21) to reflect the location of the cloned folder. 
+Modify the Bash variable `CURRENT_DIR` (on line 21) to reflect the location of the cloned folder.
+If deploying for non UC Davis DNS records, change the Bash variable `DNS_SERVER` to your primary DNS server.
 
 ### Updating CheckList
 The CheckList file must follow the following rules

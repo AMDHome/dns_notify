@@ -20,6 +20,7 @@
 # globals
 CURRENT_DIR="/root/dns_notify"
 CheckList="${CURRENT_DIR}/CheckList"
+DNS_SERVER="169.237.160.10"
 SPECIFIEDDOMAIN=""
 VERBOSE=0
 NOEMAIL=0
@@ -103,7 +104,7 @@ Hotline: (530) 752-1566
     
     if [ $VERBOSE -eq 1 ] && [ $NOEMAIL -ne 1 ]; then echo -e "Email Sent.\n"; fi
 
-    if [ $NOEMAIL -eq 1 ]; then echo "\n-n flag enabled. Email not sent.\n"; fi
+    if [ $NOEMAIL -eq 1 ]; then echo -e "\n-n flag enabled. Email not sent.\n"; fi
 }
 
 
@@ -112,10 +113,10 @@ Hotline: (530) 752-1566
 # $2: List of admins
 #
 # The command run is
-# dig @169.237.160.10 "$domain" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | head -n -2 | sort
+# dig "@${DNS_SERVER}" "$domain" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | head -n -2 | sort
 #
 # Breakdown:
-# dig @169.237.160.10 "$domain" any:        Ask the primary UC Davis DNS server for DNS information on the domains in the CheckList
+# dig "@${DNS_SERVER}" "$domain" any:        Ask the primary UC Davis DNS server for DNS information on the domains in the CheckList
 # sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p':       Only display lines from ";; ANSWER SECTION:" to ";; Query time:"
 # sed '/RRSIG/d':       Remove all RRSIG entries. These entries are managed by infoblox and they change regularly
 # sed '/SOA/d':         Remove all SOA entries. These entries are managed by infoblox and they change regularly
@@ -129,19 +130,19 @@ function check {
     if [ $VERBOSE -eq 1 ];
     then 
         echo -e "Getting current DNS entries...\n"
-        dig @169.237.160.10 "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2
+        dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2
         echo -e "\n"
     fi
 
     if [ ! -f "${CURRENT_DIR}/domains/${1}" ]
     then
         if [ $VERBOSE -eq 1 ]; then echo -e "\nNo previous DNS entry found for $1. Saving current DNS configuration.\n"; fi
-        dig @169.237.160.10 "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > "${CURRENT_DIR}/domains/${1}"
+        dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > "${CURRENT_DIR}/domains/${1}"
         continue
     fi
 
     # If previous DNS entry exist, Get new entries and compare
-    dig @169.237.160.10 "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > "/tmp/dns_notify"
+    dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > "/tmp/dns_notify"
 
     if [ $VERBOSE -eq 1 ]
     then
