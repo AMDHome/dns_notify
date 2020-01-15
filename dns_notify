@@ -18,7 +18,8 @@
 
 
 # globals
-CheckList="./CheckList"
+CURRENT_DIR="/root/dns_notify"
+CheckList="${CURRENT_DIR}/CheckList"
 SPECIFIEDDOMAIN=""
 VERBOSE=0
 NOEMAIL=0
@@ -133,10 +134,10 @@ function check {
         echo -e "\n"
     fi
 
-    if [ ! -f "./domains/${1}" ]
+    if [ ! -f "${CURRENT_DIR}/domains/${1}" ]
     then
         if [ $VERBOSE -eq 1 ]; then echo -e "\nNo previous DNS entry found for $1. Saving current DNS configuration.\n"; fi
-        dig @169.237.160.10 "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > "./domains/${1}"
+        dig @169.237.160.10 "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > "${CURRENT_DIR}/domains/${1}"
         continue
     fi
 
@@ -146,10 +147,10 @@ function check {
     if [ $VERBOSE -eq 1 ]
     then
         echo "DNS Differences for $1:"
-        diff "./domains/${1}" temp
+        diff "${CURRENT_DIR}/domains/${1}" temp
         echo ""
     fi
-    DIFF=`diff "./domains/${1}" temp`
+    DIFF=`diff "${CURRENT_DIR}/domains/${1}" temp`
 
     # Entries don't match, send email
     if [ $? -eq 1 ]
