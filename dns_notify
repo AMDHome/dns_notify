@@ -1,0 +1,320 @@
+#!/bin/bash
+#
+# Script Name: dns_notify
+# Author: Samuel Tseng (Kerberos ID: amdhome)
+# Synopsis: emails list of admins if any dns changes are made to specified addresses
+# Created: January 14, 2020
+# Usage: ./dns_notify {-h} [-v] [-e | -E overRideEmail] [-d IP_Address]
+#
+# Prerequisites:
+#       - dig
+#       - ssmtp (Setup with SMTP server)
+#       - sendmail
+#       - sed/awk/diff
+#
+# Other Notes: I used outlook SMTP servers with dcop email
+# For more information read the help function
+#
+
+
+# globals
+CheckList="./CheckList"
+SPECIFIEDDOMAIN=""
+VERBOSE=0
+NOEMAIL=0
+OVERRIDEEMAIL=0
+OEmailAddress=""
+
+
+# Print Help Function
+function pHelp {
+    echo -e "Usage: ./dns_notify {-h} [-v] [-e | -E over_ride@email] [-d domain_name]\n"
+
+    echo -e "Ex: ./dns_notify"
+    echo -e "    ./dns_notify -v -e"
+    echo -e "    ./dns_notify -E email@ucdavis.edu"
+    echo -e "    ./dns_notify -d 123.45.67.89\n\n"
+
+    echo -e "About: ./dns_notify is a script that is meant to be run by a cron job with no"
+    echo -e "       arguements to monitor the dns for important UC Davis domains. The first"
+    echo -e "       time it runs on a specific domain, it will save a copy of the DNS records"
+    echo -e "       as reported by dig. On consecutive runs it will run the current DNS"
+    echo -e "       records against the one it has on file. If there are any differents in"
+    echo -e "       the DNS records it will email the specified sysadmins.\n"
+    echo -e "       All domains that will be checked along with their sysadmin's email will"
+    echo -e "       be stored in the file CheckList\n\n"
+
+    echo -e "Options:"
+    echo -e "\t-d: Specify domain: Only the specified domain will be checked. All other"
+    echo -e "\t    entries in CheckList will be skipped. The domain entered must"
+    echo -e "\t    already be in the CheckList file\n"
+    echo -e "\t-e: Email Override. This flag will override all email preferences stored"
+    echo -e "\t    In the checklist. All emails will be sent to the specified address."
+    echo -e "\t    The specified sysadmin's will not recieve an email. This flag will"
+    echo -e "\t    have no effect if the No Email flag (-n) is specified\n"
+    echo -e "\t-h: Help: Prints out this help screen\n"
+    echo -e "\t-n: No Email: Will not send any emails out. It will just print the email"
+    echo -e "\t    that would've been sent onto the screen\n"
+    echo -e "\t-v: Verbose mode: Prints out all command outputs\n"
+    exit 1
+}
+
+
+# Email Send Function
+# $1: Email addresses to send to
+# $2: Domain name
+# $3: Diff of DNS entries
+
+
+function send {
+
+MESSAGE=`(
+echo "From: dcop-bot@ucdavis.edu";
+echo "To:$1";
+echo "Subject: DNS Entries Changed for $2";
+
+echo "
+Hello Admin's,
+
+The following change(s) have been detected for the domain $2.
+
+$3
+
+If these changes were intentional please let operations know to update the saved DNS entries for DNS_Notify on dcop-bot
+
+Please do not reply or send emails back to this email address. This inbox is not monitored.
+
+Thanks,
+Operations Team
+Hotline: (530) 752-1566
+";
+)`
+
+    if [ $VERBOSE -eq 1 ] || [ $NOEMAIL -eq 1 ]; then echo -e "This will be the email sent:\n"; fi
+    if [ $VERBOSE -eq 1 ] || [ $NOEMAIL -eq 1 ]; then echo "$MESSAGE"; fi
+
+    if [ $VERBOSE -eq 1 ]
+    then
+        if [ $NOEMAIL -ne 1 ]
+        then
+            echo -e "\nSending Email...\n"
+            echo "$MESSAGE" | sendmail -t
+            echo -e "Email Sent.\n"
+        else
+            echo -e "\n-n flag enabled. Email not sent.\n"
+        fi
+    fi
+}
+
+
+# Function to perform the checks
+# $1: Domain being checked
+# $2: List of admins
+#
+# The command run is
+# dig @169.237.160.10 "$domain" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | head -n -2 | sort
+#
+# Breakdown:
+# dig @169.237.160.10 "$domain" any:        Ask the primary UC Davis DNS server for DNS information on the domains in the CheckList
+# sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p':       Only display lines from ";; ANSWER SECTION:" to ";; Query time:"
+# sed '/RRSIG/d':       Remove all RRSIG entries. These entries are managed by infoblox and they change regularly
+# sed '/SOA/d':         Remove all SOA entries. These entries are managed by infoblox and they change regularly
+# sort:                 Sort lines so they are in alphabetical order
+# head -n -2:           Remove last two lines for cleanliness
+
+
+function check {
+    # If a previous version of the domain DNS entries doesn't exist, Cache DNS entry
+
+    if [ $VERBOSE -eq 1 ];
+    then 
+        echo -e "Getting current DNS entries...\n"
+        dig @169.237.160.10 "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2
+        echo -e "\n"
+    fi
+
+    if [ ! -f "./domains/${1}" ]
+    then
+        if [ $VERBOSE -eq 1 ]; then echo -e "\nNo previous DNS entry found for $1. Saving current DNS configuration.\n"; fi
+        dig @169.237.160.10 "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > "./domains/${1}"
+        continue
+    fi
+
+    # If previous DNS entry exist, Get new entries and compare
+    dig @169.237.160.10 "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > temp
+
+    if [ $VERBOSE -eq 1 ]
+    then
+        echo "DNS Differences for $1:"
+        diff "./domains/${1}" temp
+        echo ""
+    fi
+    DIFF=`diff "./domains/${1}" temp`
+
+    # Entries don't match, send email
+    if [ $? -eq 1 ]
+    then
+        if [ $VERBOSE -eq 1 ]; then echo -e "\nDNS Entries Changed! Sending Email!\n\n"; fi
+
+        # Format Diff output
+        DIFF=`echo "$DIFF" | tail -n +2 | sed 's/< /deleted\t/g' | sed 's/> /added\t/g'`
+
+        # Process List of admins to send email to.
+        if [ $OVERRIDEEMAIL -eq 0 ]
+        then
+            IFS=':' read -r -a TO <<< "$2"
+            for admin in ${!TO[@]}
+            do
+                TO[$admin]=`echo "${TO[admin]}" | awk -F ',' '{print $2}'`
+            done
+            TO=`IFS=$', '; echo "${TO[*]}"`
+
+            send "$TO" "$1" "$DIFF"
+        else
+            send "$2" "$1" "$DIFF"
+        fi
+        
+    fi
+}
+
+
+# ~~~~~~~~~~~~ Script Begins Here ~~~~~~~~~~~~ #
+
+
+# Parse Flags
+while getopts "hne:vd:" OPTION; do
+    case $OPTION in
+    h)
+        pHelp
+        ;;
+    n)
+        NOEMAIL=1
+        ;;
+    e)
+        OVERRIDEEMAIL=1
+        OEmailAddress=$OPTARG
+        ;;
+    v)
+        VERBOSE=1
+        ;;
+    d)
+        SPECIFIEDDOMAIN=$OPTARG
+        ;;
+    *)
+        pHelp
+        ;;
+    esac
+done
+shift $((OPTIND -1))
+
+
+# Read in Servers and Admins from CheckList
+declare -A DOMAINS
+newDomain=1
+domain=""
+
+if [ $VERBOSE -eq 1 ]; then echo "Loading CheckList"; fi
+while IFS= read -r line
+do
+    # If entry is commented out, skip
+    if [[ $line = \#* ]]
+    then
+        if [[ $line == \#*--- ]]
+        then
+            newDomain=1
+            continue
+        fi
+
+        # If domain is commented out skip section
+        if [ $newDomain -eq 1 ]
+        then
+            if [ $VERBOSE -eq 1 ]; then echo "Skipping server ${line}..."; fi
+            newDomain=0
+            continue
+
+        # If single admin is commented out, just skip him/her
+        else
+            if [ $VERBOSE -eq 1 ]; then echo -e "\tOmitting Admin $line"; fi
+            continue
+        fi
+    fi
+
+    # If server section break, Put last server into list
+    if [ "$line" == "---" ]
+    then
+        if [ "$domain" != "" ]; then DOMAINS+=(["$domain"]="$contacts"); fi
+        domain=""
+        contacts=""
+        newDomain=1
+        continue
+    fi
+
+    # Read in domain
+    if [ $newDomain -eq 1 ]
+    then
+        domain=$line
+        newDomain=0
+        continue
+    fi
+
+    # Read in Admin addresses
+    if [ "$contacts" == "" ]
+    then
+        contacts=$line
+    else
+        contacts="${contacts}:${line}"
+    fi
+done < "$CheckList"
+
+
+# If user specified a domain then check if it exists
+if [ "$SPECIFIEDDOMAIN" != "" ]
+then
+    SDE=0
+
+    echo -e "\n\nDomain was specified. Looking through list."
+
+    for domain in "${!DOMAINS[@]}"
+    do
+        if [ $domain == $SPECIFIEDDOMAIN ]
+        then
+            echo -e "Specified domain ($domain) found."
+            if [ $OVERRIDEEMAIL -eq 1 ]
+            then
+                check "$domain" "$OEmailAddress"
+            else
+                check "$domain" "${DOMAINS[$domain]}"
+            fi
+            exit 0
+        fi
+    done
+
+    # If it gets to here, then that means the domain doesnt exist in the list already
+    >&2 echo "$domain was not found in the list of loaded domains."
+    >&2 echo "Please add $domain to the CheckList and try again"
+    exit 1
+fi
+
+
+# If verbose mode enabled, print out what is read from CheckList
+if [ $VERBOSE -eq 1 ]
+then
+    echo -e "\n\nThese servers and admins were read in from CheckList"
+    declare -p DOMAINS
+    echo -e "\n"
+fi
+
+
+# Normal operation
+# Iterate through each domain
+for domain in "${!DOMAINS[@]}"
+do
+    if [ $OVERRIDEEMAIL -eq 1 ]
+    then
+        check "$domain" "$OEmailAddress"
+    else
+        check "$domain" "${DOMAINS[$domain]}"
+    fi
+done
+
+exit 0
