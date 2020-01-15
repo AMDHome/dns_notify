@@ -90,21 +90,20 @@ Operations Team
 Hotline: (530) 752-1566
 ";
 )`
-
-    if [ $VERBOSE -eq 1 ] || [ $NOEMAIL -eq 1 ]; then echo -e "This will be the email sent:\n"; fi
-    if [ $VERBOSE -eq 1 ] || [ $NOEMAIL -eq 1 ]; then echo "$MESSAGE"; fi
-
-    if [ $VERBOSE -eq 1 ]
-    then
-        if [ $NOEMAIL -ne 1 ]
-        then
-            echo -e "\nSending Email...\n"
-            echo "$MESSAGE" | sendmail -t
-            echo -e "Email Sent.\n"
-        else
-            echo -e "\n-n flag enabled. Email not sent.\n"
-        fi
+    
+    if [ $VERBOSE -eq 1 ] || [ $NOEMAIL -eq 1 ]
+    then 
+        echo -e "This will be the email sent:\n"
+        echo "$MESSAGE"
     fi
+
+    if [ $VERBOSE -eq 1 ] && [ $NOEMAIL -ne 1 ]; then echo -e "\nSending Email...\n"; fi
+    
+    if [ $NOEMAIL -ne 1 ]; then echo "$MESSAGE" | sendmail -t; fi
+    
+    if [ $VERBOSE -eq 1 ] && [ $NOEMAIL -ne 1 ]; then echo -e "Email Sent.\n"; fi
+
+    if [ $NOEMAIL -eq 1 ]; then echo "\n-n flag enabled. Email not sent.\n"; fi
 }
 
 
@@ -142,19 +141,20 @@ function check {
     fi
 
     # If previous DNS entry exist, Get new entries and compare
-    dig @169.237.160.10 "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > temp
+    dig @169.237.160.10 "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > "/tmp/dns_notify"
 
     if [ $VERBOSE -eq 1 ]
     then
         echo "DNS Differences for $1:"
-        diff "${CURRENT_DIR}/domains/${1}" temp
+        diff "${CURRENT_DIR}/domains/${1}" "/tmp/dns_notify"
         echo ""
     fi
-    DIFF=`diff "${CURRENT_DIR}/domains/${1}" temp`
+    DIFF=`diff "${CURRENT_DIR}/domains/${1}" "/tmp/dns_notify"`
 
     # Entries don't match, send email
     if [ $? -eq 1 ]
     then
+        echo "no match" > "${CURRENT_DIR}/nm"
         if [ $VERBOSE -eq 1 ]; then echo -e "\nDNS Entries Changed! Sending Email!\n\n"; fi
 
         # Format Diff output
