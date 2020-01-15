@@ -2,6 +2,10 @@
 ## Summary
 Script to monitor and alert of DNS changes (Specifically for UC Davis DNS records)
 
+## Files
+dns_notify: Main Script
+CheckList: Configuration file
+
 ## About
 ./dns_notify is a script that is meant to be run by a cron job with no arguements to monitor the dns for important UC Davis domains. The first time it runs on a specific domain, it will save a copy of the DNS records as reported by dig. On consecutive runs it will run the current DNS records against the one it has on file. If there are any differents in the DNS records it will email the specified sysadmins. 
 
