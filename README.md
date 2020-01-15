@@ -32,6 +32,8 @@ If you use the cron entry above make sure you change the path to the location wh
 Modify the Bash variable `CURRENT_DIR` (on line 21) to reflect the location of the cloned folder.
 If deploying for non UC Davis DNS records, change the Bash variable `DNS_SERVER` to your primary DNS server.
 
+If implemented elsewhere please change the email that is sent by editing the `MESSAGE` bash variable in the `send` function
+
 ### Updating CheckList
 The CheckList file must follow the following rules
 - Each domain and its corosponding sysadmin list must be incased with three hypens `---`.
