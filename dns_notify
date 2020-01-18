@@ -118,10 +118,8 @@ Hotline: (530) 752-1566
 # Breakdown:
 # dig "@${DNS_SERVER}" "$domain" any:        Ask the primary UC Davis DNS server for DNS information on the domains in the CheckList
 # sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p':       Only display lines from ";; ANSWER SECTION:" to ";; Query time:"
-# sed '/RRSIG/d':       Remove all RRSIG entries. These entries are managed by infoblox and they change regularly
-# sed '/SOA/d':         Remove all SOA entries. These entries are managed by infoblox and they change regularly
+# sed -e '/RRSIG/d' -e '/SOA/d' -e '/^;;/d' -e '/^$/d':     Remove all RRSIG and SOA entries (entries managed by infoblox). Also remove lines starting with ;; and blank lines
 # sort:                 Sort lines so they are in alphabetical order
-# head -n -2:           Remove last two lines for cleanliness
 
 
 function check {
@@ -129,20 +127,20 @@ function check {
 
     if [ $VERBOSE -eq 1 ];
     then 
-        echo -e "Getting current DNS entries...\n"
-        dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2
-        echo -e "\n"
+        echo -e "Getting current DNS entries for $1...\n"
+        dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed -e '/RRSIG/d' -e '/SOA/d' -e '/^;;/d' -e '/^$/d' | sort
+        echo -e ""
     fi
 
     if [ ! -f "${CURRENT_DIR}/domains/${1}" ]
     then
         if [ $VERBOSE -eq 1 ]; then echo -e "\nNo previous DNS entry found for $1. Saving current DNS configuration.\n"; fi
-        dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > "${CURRENT_DIR}/domains/${1}"
+        dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed -e '/RRSIG/d' -e '/SOA/d' -e '/^;;/d' -e '/^$/d' | sort > "${CURRENT_DIR}/domains/${1}"
         continue
     fi
 
     # If previous DNS entry exist, Get new entries and compare
-    dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed '/RRSIG/d' | sed '/SOA/d' | sort | head -n -2 > "/tmp/dns_notify"
+    dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed -e '/RRSIG/d' -e '/SOA/d' -e '/^;;/d' -e '/^$/d' | sort > "/tmp/dns_notify"
 
     if [ $VERBOSE -eq 1 ]
     then
