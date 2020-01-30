@@ -35,17 +35,65 @@ If deploying for non UC Davis DNS records, change the Bash variable `DNS_SERVER`
 If implemented elsewhere please change the email that is sent by editing the `MESSAGE` bash variable in the `send` function
 
 ### Updating CheckList
-The CheckList file must follow the following rules
-- Each domain and its corosponding sysadmin list must be incased with three hypens `---`.
-- The domain must follow immediately after the three hyphens.
+The CheckList file is formatted in blocks of domains/sysadmins that will be checked/notified. Each block of domains/sysadmins must be wrapped in three hyphens `---`. Subsequent blocks may share the hyphens. An example of a block is below:
+
+```
+---
+www.ucdavis.edu
+Sysadmin Name, sysadmin1@email.com
+#Disabled Name, sysadmin2@email.com
+Another, sysadmin3@email.com
+---
+```
+
+Each block is composed of two sections: a Domain, and a list of sysadmins.
+
+#### Domain section
+The domain section is the first line right after the three hyphens `---`. This will be the domain that the dns_notify script checks.
+
+If there are special arguements you wish to add you can put them right after it with a space seperating the domain from the arguements.
+
+The two supported arguements are as follows:
+(`T`): This option will omit checking the TTL for just this domain. Use this if you dont know the primary DNS server that holds the records
+(`$ip`): This option will change the DNS server for this specific domain. It will not use the hardcoded server in the script.
+
+These two arguements are mutually exclusive. If you have one you cannot have the other
+
+Here are the examples of how the domain section should be formatted:
+```
+ucdavis.edu
+ucdavis.edu T
+ucdavis.edu 8.8.8.8
+```
+
+#### Sysadmin Section
+The Sysadmin section will follow right after the Domain Section. This is a list of sysadmins that will be notified of any changes.
+
+The Sysadmin section must follow the following rules
+- Each sysadmin must be on his/her own line
 - The sysadmin list for any given domain must be in this format `Name, Email`.
 	- The sysadmin name and email cannot contain commas (`,`) or colons (`:`).
 	- The sysadmin name can have spaces. You can put First/Last or just an ID here. It will not be used in the script. It is just a placeholder to help you identify who they are.
+	- You must have something in the name section even if it is meaningless
+
+Examples of valid lines of the Sysadmin List:
+```
+First Last, sysadmin1@email.com
+AnotherSysadmin, sysadmin2@email.com
+A Third Sysadmin, sysadmin3@email.com
+This System Admin Has A Really Long Name, sysadmin4@email.com
+```
+
+#### Disabling checks/sysadmins
+If you wish to permanently disable any checks/sysadmins simply delete them from the CheckList file. If you wish to temporarly delete them you can comment them out bash style. Some rules are below:
+
 - If you wish to temporarily remove a sysadmin or domain, you can comment it out bash style (`#` at the beginning of the line). Disabled sysadmins will not recieve emails.
 - If you wish to temporarily remove a domain you will need to comment out the domain as well as it's accompanying sysadmins. Disabled domains will not be checked.
 - You must have at least one active sysadmin per active domain.
 
-should be in the following format.
+
+
+#### Example Checklist
 ```
 ---
 domain1.ucdavis.edu
@@ -81,6 +129,7 @@ Sysadmin, sysadmin1@email.com
 **-e**: Email Override. This flag will override all email preferences stored In the checklist. All emails will be sent to the specified address. The sysadmins specified in the CheckList will not recieve an email. This flag will have no effect if the No Email flag (-n) is specified
 **-h**: Help: Prints out this help screen
 **-n**: No Email: Will not send any emails out. It will just print the email that would've been sent onto the screen
+**-t**: No TTL: Enabling this flag will omit the TTL from any DNS checks. Use this if checking DNSs that arent on the specified DNS server.
 **-v**: Verbose mode: Prints out all command outputs"
 
 ## Updating DNS entries
