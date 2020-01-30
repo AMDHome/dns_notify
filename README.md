@@ -55,7 +55,7 @@ If there are special arguements you wish to add you can put them right after it 
 
 The two supported arguements are as follows:
 (`T`): This option will omit checking the TTL for just this domain. Use this if you dont know the primary DNS server that holds the records
-(`$ip`): This option will change the DNS server for this specific domain. It will not use the hardcoded server in the script.
+(`$ip`): This option will change the DNS server for this specific domain. It will not use the hardcoded server in the script. This is useful for subzones with seperate nameservers
 
 These two arguements are mutually exclusive. If you have one you cannot have the other
 
