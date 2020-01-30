@@ -24,13 +24,15 @@ DNS_SERVER="169.237.160.10"
 SPECIFIEDDOMAIN=""
 VERBOSE=0
 NOEMAIL=0
+NOTTL=0
 OVERRIDEEMAIL=0
 OEmailAddress=""
+MESSAGECount=0
 
 
 # Print Help Function
 function pHelp {
-    echo -e "Usage: ./dns_notify {-h} [-v] [-n | -e over_ride@email] [-d domain_name]\n"
+    echo -e "Usage: ./dns_notify {-h} [-v] [-t] [-n | -e over_ride@email] [-d domain_name]\n"
 
     echo -e "Ex: ./dns_notify"
     echo -e "    ./dns_notify -v -n"
@@ -57,6 +59,8 @@ function pHelp {
     echo -e "\t-h: Help: Prints out this help screen\n"
     echo -e "\t-n: No Email: Will not send any emails out. It will just print the email"
     echo -e "\t    that would've been sent onto the screen\n"
+    echo -e "\t-t: No TTL: Enabling this flag will omit the TTL from any DNS checks. Use"
+    echo -e "\t    this if checking DNSs that arent on the specified DNS server.\n"
     echo -e "\t-v: Verbose mode: Prints out all command outputs\n"
     exit 1
 }
@@ -96,6 +100,7 @@ Hotline: (530) 752-1566
     then 
         echo -e "This will be the email sent:\n"
         echo "$MESSAGE"
+        let "MESSAGECount+=1" 
     fi
 
     if [ $VERBOSE -eq 1 ] && [ $NOEMAIL -ne 1 ]; then echo -e "\nSending Email...\n"; fi
@@ -105,6 +110,24 @@ Hotline: (530) 752-1566
     if [ $VERBOSE -eq 1 ] && [ $NOEMAIL -ne 1 ]; then echo -e "Email Sent.\n"; fi
 
     if [ $NOEMAIL -eq 1 ]; then echo -e "\n-n flag enabled. Email not sent.\n"; fi
+}
+
+# Checks to see if an IP is a valid IP
+function valid_ip()
+{
+    local  ip=$1
+    local  stat=1
+
+    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        OIFS=$IFS
+        IFS='.'
+        ip=($ip)
+        IFS=$OIFS
+        [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 \
+            && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
+        stat=$?
+    fi
+    return $stat
 }
 
 
@@ -121,8 +144,25 @@ Hotline: (530) 752-1566
 # sed -e '/RRSIG/d' -e '/SOA/d' -e '/^;;/d' -e '/^$/d':     Remove all RRSIG and SOA entries (entries managed by infoblox). Also remove lines starting with ;; and blank lines
 # sort:                 Sort lines so they are in alphabetical order
 
-
 function check {
+
+    # Check for special arguements
+    sARG=0
+    oARG=0
+    if [ "$3" == "T" ]
+    then
+        sARG=1
+        oARG="$NOTTL"
+        NOTTL=1
+        if [ $VERBOSE -eq 1 ]; then echo -e "\nNOTTL specified in CheckList. Not checking TTL for $1\n"; fi
+    elif valid_ip $3;
+    then
+        sARG=1
+        oARG="$DNS_SERVER"
+        DNS_SERVER="$3"
+        if [ $VERBOSE -eq 1 ]; then echo -e "\nCustom DNS record specified in CheckList. Using $DNS_Server as DNS server for $1\n"; fi
+    fi
+
     # If a previous version of the domain DNS entries doesn't exist, Cache DNS entry
 
     if [ $VERBOSE -eq 1 ];
@@ -142,18 +182,26 @@ function check {
     # If previous DNS entry exist, Get new entries and compare
     dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed -e '/RRSIG/d' -e '/SOA/d' -e '/^;;/d' -e '/^$/d' | sort > "/tmp/dns_notify"
 
+    if [ $NOTTL -eq 1 ]
+    then
+        cut -f 1,3- "/tmp/dns_notify" > "/tmp/dns_notify_tmp"
+        cat "/tmp/dns_notify_tmp" > "/tmp/dns_notify"
+        cut -f 1,3- "${CURRENT_DIR}/domains/${1}" > "/tmp/dns_notify_cache"
+    else
+        cat "${CURRENT_DIR}/domains/${1}" > "/tmp/dns_notify_cache"
+    fi
+
     if [ $VERBOSE -eq 1 ]
     then
         echo "DNS Differences for $1:"
-        diff "${CURRENT_DIR}/domains/${1}" "/tmp/dns_notify"
+        diff "/tmp/dns_notify_cache" "/tmp/dns_notify"
         echo ""
     fi
-    DIFF=`diff "${CURRENT_DIR}/domains/${1}" "/tmp/dns_notify"`
+    DIFF=`diff "/tmp/dns_notify_cache" "/tmp/dns_notify"`
 
     # Entries don't match, send email
     if [ $? -eq 1 ]
     then
-        echo "no match" > "${CURRENT_DIR}/nm"
         if [ $VERBOSE -eq 1 ]; then echo -e "\nDNS Entries Changed! Sending Email!\n\n"; fi
 
         # Format Diff output
@@ -175,6 +223,19 @@ function check {
         fi
         
     fi
+
+    # Revert changes done from special arguements
+    if [ $sARG -eq 1 ]
+    then
+        if [[ $oARG =~ ^[0-9]$ ]]
+        then
+            sARG=0
+            NOTTL="$oARG"
+        else
+            sARG=0
+            DNS_SERVER="$oARG"
+        fi
+    fi
 }
 
 
@@ -182,10 +243,14 @@ function check {
 
 
 # Parse Flags
-while getopts "hne:vd:" OPTION; do
+while getopts "hne:vd:t" OPTION; do
     case $OPTION in
     h)
         pHelp
+        ;;
+    t)
+        NOTTL=1
+        echo "-t flag found. Omitting TTL in checks"
         ;;
     n)
         NOEMAIL=1
@@ -210,6 +275,7 @@ shift $((OPTIND -1))
 
 # Read in Servers and Admins from CheckList
 declare -A DOMAINS
+declare -A CHKOPS
 newDomain=1
 domain=""
 
@@ -242,7 +308,15 @@ do
     # If server section break, Put last server into list
     if [ "$line" == "---" ]
     then
-        if [ "$domain" != "" ]; then DOMAINS+=(["$domain"]="$contacts"); fi
+        if [ "$domain" != "" ]
+        then
+            IFS=' ' read -ra parseDomain <<< "$domain"
+            if [ "${#parseDomain[@]}" -eq 2 ]
+            then
+                CHKOPS+=(["${parseDomain[0]}"]="${parseDomain[1]}");
+            fi
+            DOMAINS+=(["${parseDomain[0]}"]="$contacts"); fi
+            
         domain=""
         contacts=""
         newDomain=1
@@ -266,7 +340,6 @@ do
     fi
 done < "$CheckList"
 
-
 # If user specified a domain then check if it exists
 if [ "$SPECIFIEDDOMAIN" != "" ]
 then
@@ -281,10 +354,11 @@ then
             echo -e "Specified domain ($domain) found."
             if [ $OVERRIDEEMAIL -eq 1 ]
             then
-                check "$domain" "$OEmailAddress"
+                check "$domain" "$OEmailAddress" "${CHKOPS[$domain]}"
             else
-                check "$domain" "${DOMAINS[$domain]}"
+                check "$domain" "${DOMAINS[$domain]}" "${CHKOPS[$domain]}"
             fi
+            if [ $VERBOSE -eq 1 ]; then echo -e "\n\n$MESSAGECount messages were generated\n"; fi
             exit 0
         fi
     done
@@ -301,9 +375,10 @@ if [ $VERBOSE -eq 1 ]
 then
     echo -e "\n\nThese servers and admins were read in from CheckList"
     declare -p DOMAINS
+    echo -e "\n\nThese optional arguements were read in from CheckList"
+    declare -p CHKOPS
     echo -e "\n"
 fi
-
 
 # Normal operation
 # Iterate through each domain
@@ -311,10 +386,12 @@ for domain in "${!DOMAINS[@]}"
 do
     if [ $OVERRIDEEMAIL -eq 1 ]
     then
-        check "$domain" "$OEmailAddress"
+        check "$domain" "$OEmailAddress" "${CHKOPS[$domain]}"
     else
-        check "$domain" "${DOMAINS[$domain]}"
+        check "$domain" "${DOMAINS[$domain]}" "${CHKOPS[$domain]}"
     fi
 done
+
+if [ $VERBOSE -eq 1 ]; then echo -e "\n\n$MESSAGECount messages were generated\n"; fi
 
 exit 0
