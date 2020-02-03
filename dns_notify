@@ -25,6 +25,7 @@ SPECIFIEDDOMAIN=""
 VERBOSE=0
 NOEMAIL=0
 NOTTL=0
+UPDATE=0
 OVERRIDEEMAIL=0
 OEmailAddress=""
 MESSAGECount=0
@@ -32,10 +33,11 @@ MESSAGECount=0
 
 # Print Help Function
 function pHelp {
-    echo -e "Usage: ./dns_notify {-h} [-v] [-t] [-n | -e over_ride@email] [-d domain_name]\n"
+    echo -e "Usage: ./dns_notify {-h} [-v] [-t] [-n [-u]| -e over_ride@email] [-d domain_name]\n"
 
     echo -e "Ex: ./dns_notify"
     echo -e "    ./dns_notify -v -n"
+    echo -e "    ./dns_notify -v -n -u"
     echo -e "    ./dns_notify -e email@ucdavis.edu"
     echo -e "    ./dns_notify -d subdomain.ucdavis.edu\n\n"
 
@@ -48,6 +50,8 @@ function pHelp {
     echo -e "       All domains that will be checked along with their sysadmin's email will"
     echo -e "       be stored in the file CheckList\n\n"
 
+    echo -e "Note: Unless -n is specified. The stored DNS entries will always update when run\n\n"
+
     echo -e "Options:"
     echo -e "\t-d: Specify domain: Only the specified domain will be checked. All other"
     echo -e "\t    entries in CheckList will be skipped. The domain entered must"
@@ -58,9 +62,14 @@ function pHelp {
     echo -e "\t    flag will have no effect if the No Email flag (-n) is specified\n"
     echo -e "\t-h: Help: Prints out this help screen\n"
     echo -e "\t-n: No Email: Will not send any emails out. It will just print the email"
-    echo -e "\t    that would've been sent onto the screen\n"
+    echo -e "\t    that would've been sent onto the screen. No DNS checks will be"
+    echo -e "\t    updated. If you wish to update the DNS checks use the -u flag\n"
     echo -e "\t-t: No TTL: Enabling this flag will omit the TTL from any DNS checks. Use"
     echo -e "\t    this if checking DNSs that arent on the specified DNS server.\n"
+    echo -e "\t-u: Update DNS entries: Enabling this flag will update the cached DNS"
+    echo -e "\t    entries stored in the checks. This flag will only have an effect"
+    echo -e "\t    when the -n flag is used. Under normal circumstances, the cached DNS"
+    echo -e "\t    entries already update automatically.\n"
     echo -e "\t-v: Verbose mode: Prints out all command outputs\n"
     exit 1
 }
@@ -86,7 +95,8 @@ The following change(s) have been detected for the domain $2.
 
 $3
 
-If these changes were intentional please let operations know to update the saved DNS entries for DNS_Notify on dcop-bot
+If these changes were intentional then no action is necessary. The checks have already updated with these new DNS entries.
+If these changes were not intentional please contact the the relevent sysadmins and/or operations to revert the changes.
 
 Please do not reply or send emails back to this email address. This inbox is not monitored.
 
@@ -110,6 +120,16 @@ Hotline: (530) 752-1566
     if [ $VERBOSE -eq 1 ] && [ $NOEMAIL -ne 1 ]; then echo -e "Email Sent.\n"; fi
 
     if [ $NOEMAIL -eq 1 ]; then echo -e "\n-n flag enabled. Email not sent.\n"; fi
+
+    if [ $NOEMAIL -eq 1 ]
+    then
+        if [ $UPDATE -eq 1 ]
+        then
+            echo -e "-u flag enabled. Entries will be updated\n"
+         else
+            echo -e "Entries will not be updated\n"
+        fi
+    fi
 }
 
 # Checks to see if an IP is a valid IP
@@ -179,25 +199,40 @@ function check {
         continue
     fi
 
-    # If previous DNS entry exist, Get new entries and compare
-    dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed -e '/RRSIG/d' -e '/SOA/d' -e '/^;;/d' -e '/^$/d' | sort > "/tmp/dns_notify"
+    # If previous DNS entry exist, Move them to tmp and get new entries and compare
+    cat "${CURRENT_DIR}/domains/${1}" > "/tmp/${1}_old"
 
+    # If not sending emails, then dont update configuration unless -u specified
+    if [ $NOEMAIL -eq 1 ] && [ $UPDATE -eq 0 ]
+    then
+        dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed -e '/RRSIG/d' -e '/SOA/d' -e '/^;;/d' -e '/^$/d' | sort > "/tmp/${1}_new"
+    # else operate normally
+    else
+        dig "@${DNS_SERVER}" "$1" any | sed -n '/^;; ANSWER SECTION:$/,/^;; Query time:/p' | sed -e '/RRSIG/d' -e '/SOA/d' -e '/^;;/d' -e '/^$/d' | sort > "${CURRENT_DIR}/domains/${1}"
+        cat "${CURRENT_DIR}/domains/${1}" > "/tmp/${1}_new"
+    fi
+
+    
+
+    # If no TTL specified
     if [ $NOTTL -eq 1 ]
     then
-        cut -f 1,3- "/tmp/dns_notify" > "/tmp/dns_notify_tmp"
-        cat "/tmp/dns_notify_tmp" > "/tmp/dns_notify"
-        cut -f 1,3- "${CURRENT_DIR}/domains/${1}" > "/tmp/dns_notify_cache"
-    else
-        cat "${CURRENT_DIR}/domains/${1}" > "/tmp/dns_notify_cache"
+        # Remove TTL from old records
+        cut -f 1,3- "/tmp/${1}_old" > "/tmp/dns_notify_tmp"
+        cat "/tmp/dns_notify_tmp" > "/tmp/${1}_old"
+
+        # Remove TTL from new records
+        cut -f 1,3- "/tmp/${1}_new" > "/tmp/dns_notify_tmp"
+        cat "/tmp/dns_notify_tmp" > "/tmp/${1}_new"
     fi
 
     if [ $VERBOSE -eq 1 ]
     then
         echo "DNS Differences for $1:"
-        diff "/tmp/dns_notify_cache" "/tmp/dns_notify"
+        diff "/tmp/${1}_old" "/tmp/${1}_new"
         echo ""
     fi
-    DIFF=`diff "/tmp/dns_notify_cache" "/tmp/dns_notify"`
+    DIFF=`diff "/tmp/${1}_old" "/tmp/${1}_new"`
 
     # Entries don't match, send email
     if [ $? -eq 1 ]
@@ -243,7 +278,7 @@ function check {
 
 
 # Parse Flags
-while getopts "hne:vd:t" OPTION; do
+while getopts "hne:vd:tu" OPTION; do
     case $OPTION in
     h)
         pHelp
@@ -254,6 +289,9 @@ while getopts "hne:vd:t" OPTION; do
         ;;
     n)
         NOEMAIL=1
+        ;;
+    u)
+        UPDATE=1
         ;;
     e)
         OVERRIDEEMAIL=1
