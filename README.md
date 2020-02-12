@@ -126,11 +126,17 @@ Sysadmin, sysadmin1@email.com
 
 ## Options
 **-d**: Specify domain: Only the specified domain will be checked. All other entries in CheckList will be skipped. The domain entered must already be in the CheckList file
+
 **-e**: Email Override. This flag will override all email preferences stored In the checklist. All emails will be sent to the specified address. The sysadmins specified in the CheckList will not recieve an email. This flag will have no effect if the No Email flag (-n) is specified
+
 **-h**: Help: Prints out this help screen
+
 **-n**: No Email: Will not send any emails out. It will just print the email that would've been sent onto the screen. NO store DNS entries will be updated unless you use the -u flag
+
 **-t**: No TTL: Enabling this flag will omit the TTL from any DNS checks. Use this if checking DNSs that arent on the specified DNS server.
+
 **-u**: Update DNS entries: Enabling this flag will update the cached DNS entries stored in the checks. This flag will only have an effect when the -n flag is used as under normal circumstances, the cached DNS entries already update automatically.
+
 **-v**: Verbose mode: Prints out all command outputs"
 
 ## Updating DNS entries
